@@ -1,0 +1,92 @@
+name: Deploy Service
+on: workflow_dispatch
+env:
+  TERRAFORM_VERSION: "1.0.11"
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  S3_BUCKET: ${{ secrets.S3_BUCKET }}
+  AWS_ACCOUNT: ${{ secrets.AWS_ACCOUNT }}
+
+jobs:
+  ecr-setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Python Setup
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8"
+
+      - name: Install AWS CLI
+        run: pip install awscli
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Initialize ECR
+        run: |
+          cd service/aws-infrastructure/ecr-repo
+          terraform init
+
+      - name: Validate ECR Template
+        run: |
+          cd service/aws-infrastructure/ecr-repo
+          terraform validate -no-color
+
+      - name: Deploy ECR Repo
+        run: |
+          cd service/aws-infrastructure/ecr-repo
+          terraform apply -auto-approve -input=false
+
+      - name: Download TFLite Model
+        run: |
+          cd service/src
+          mkdir assets
+          aws s3 cp s3://${{ env.S3_BUCKET }}/models/service/model.tflite assets/model.tflite
+
+      - name: Package and Upload Image
+        uses: appleboy/docker-ecr-action@master
+        with:
+          access_key: ${{ env.AWS_ACCESS_KEY_ID }}
+          secret_key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          region: "us-west-2"
+          context: ./service/
+          dockerfile: ./service/Dockerfile
+          registry: ${{ env.AWS_ACCOUNT }}.dkr.ecr.us-west-2.amazonaws.com
+          repo: language-recognize
+          tags: "latest,v${{ github.run_id }}"
+
+  service-deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - ecr-setup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Initialize Resource
+        run: |
+          cd service/aws-infrastructure/ecs-service
+          terraform init
+
+      - name: Validate Resource
+        run: |
+          cd service/aws-infrastructure/ecs-service
+          terraform validate
+
+      - name: Apply Resource
+        run: |
+          cd service/aws-infrastructure/ecs-service
+          terraform apply -auto-approve \
+                          -var-file="../config/variables.tfvars" \
+                          -var="language_recognize_bucket=$S3_BUCKET" \
+                          -input=false

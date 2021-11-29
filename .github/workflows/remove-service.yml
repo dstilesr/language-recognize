@@ -1,0 +1,43 @@
+name: Remove Service
+on: workflow_dispatch
+env:
+  TERRAFORM_VERSION: "1.0.11"
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  S3_BUCKET: ${{ secrets.S3_BUCKET }}
+  AWS_ACCOUNT: ${{ secrets.AWS_ACCOUNT }}
+
+jobs:
+  delete-infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Init ECS Service
+        run: |
+          cd service/aws-infrastructure/ecs-service
+          terraform init
+
+      - name: Destroy ECS Service
+        run: |
+          cd service/aws-infrastructure/ecs-service
+          terraform destroy -auto-approve \
+                            -input=false \
+                            -var="language_recognize_bucket=$S3_BUCKET" \
+                            -var-file="../config/variables.tfvars"
+
+      - name: Init ECR
+        run: |
+          cd service/aws-infrastructure/ecr-repo
+          terraform init
+
+      - name: Destroy ECR
+        run: |
+          cd service/aws-infrastructure/ecr-repo
+          terraform destroy -auto-approve -input=false

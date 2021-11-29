@@ -2,6 +2,7 @@ import os
 import re
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from unidecode import unidecode
 
 #: Mapping csv name -> language name. Take languages with LATIN ALPHABET.
@@ -36,7 +37,7 @@ def process_text(text: str) -> str:
 
 def save_text(
         text_processed: str,
-        output_dir: str,
+        output_dir: Path,
         file_number: int,
         min_length: int = 64,
         max_length: int = 128):
@@ -50,17 +51,12 @@ def save_text(
     :param max_length: Maximum sentence length
     :return:
     """
-    i = 0
-    for s in re.findall(r"[\w\-\s']+", text_processed):
-        stripped = s.strip()
-        # Write to file
-        if max_length >= len(stripped) >= min_length:
-            i += 1
-            fname = os.path.join(
-                output_dir,
-                f"text-{file_number:05d}-{i:04d}.txt"
-            )
-            with open(fname, "w") as f:
+    fpath = output_dir / f"text-{file_number:05d}.txt"
+    with fpath.open("w") as f:
+        for s in re.findall(r"[\w\-\s']+", text_processed):
+            stripped = s.strip()
+            # Write to file
+            if max_length >= len(stripped) >= min_length:
                 f.write(stripped + "\n")
 
 
@@ -68,8 +64,8 @@ def process_file(
         file_path: str,
         language_name: str,
         col_name: str = "transcript",
-        train_dir: str = os.path.join("data", "processed-text", "train"),
-        test_dir: str = os.path.join("data", "processed-text", "test"),
+        train_dir: Path = Path("data") / "processed-text" / "train",
+        test_dir: Path = Path("data") / "processed-text" / "test",
         train_test_ratio: int = 5):
     """
     Process a csv from the TED talks dataset corresponding to the dataset for
@@ -88,13 +84,13 @@ def process_file(
     df = pd.read_csv(file_path)
 
     # Create training and test directories for the given language
-    lang_dir_train = os.path.join(train_dir, language_name)
-    if not os.path.isdir(lang_dir_train):
-        os.makedirs(lang_dir_train)
+    lang_dir_train = train_dir / language_name
+    if not lang_dir_train.is_dir():
+        lang_dir_train.mkdir(parents=True)
 
-    lang_dir_test = os.path.join(test_dir, language_name)
-    if not os.path.isdir(lang_dir_test):
-        os.makedirs(lang_dir_test)
+    lang_dir_test = test_dir / language_name
+    if not lang_dir_test.is_dir():
+        lang_dir_test.mkdir(parents=True)
 
     # Shuffle texts
     idx = df.index.values
@@ -146,28 +142,29 @@ def prepare_dataset(
     :param col_name: Name of column containing the text in the csv.
     :return: None
     """
-    if not os.path.isdir(input_dir):
+    input_dir = Path(input_dir)
+    if not input_dir.is_dir():
         raise FileNotFoundError(
-            f"Could not find input directory '{input_dir}'"
+            f"Could not find input directory '{str(input_dir)}'"
         )
     # Train and test directories for output
-    train_dir = os.path.join(output_dir, "train")
-    test_dir = os.path.join(output_dir, "test")
+    train_dir = Path(output_dir) / "train"
+    test_dir = Path(output_dir) / "test"
 
     for k, v in LANG_FILES.items():
-        full_path = os.path.join(input_dir, k)
+        full_path = input_dir / k
 
         # Check that the file exists
-        if os.path.isfile(full_path):
+        if full_path.is_file():
             process_file(
-                full_path,
+                str(full_path),
                 language_name=v,
                 col_name=col_name,
                 train_dir=train_dir,
                 test_dir=test_dir
             )
         else:
-            print(f"ERROR: File '{full_path}' not found.")
+            print(f"ERROR: File '{str(full_path)}' not found.")
             continue
 
 

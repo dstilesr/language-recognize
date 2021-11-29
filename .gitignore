@@ -142,3 +142,7 @@ data/
 
 # TFLite models
 **/*.tflite
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
